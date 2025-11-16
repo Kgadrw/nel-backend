@@ -25,6 +25,19 @@ app.use("/api/admin", adminRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
+app.get("/", (_req, res) => {
+  res.json({
+    message: "Nel Ngabo Backend API",
+    version: "1.0.0",
+    endpoints: {
+      docs: "/api/docs",
+      health: "/health",
+      admin: "/api/admin",
+      auth: "/api/auth",
+    },
+  });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -58,6 +71,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`Backend server listening on http://localhost:${PORT}`);
       console.log(`Admin dashboard available at http://localhost:${PORT}/admin`);
+      console.log(`API Documentation (Swagger) available at http://localhost:${PORT}/api/docs`);
     });
   } catch (error) {
     console.error("Failed to start server:", error.message);
