@@ -134,6 +134,8 @@ const formatHero = (hero) => ({
   secondaryCta: hero.secondaryCta || { label: "", url: "" },
   streamingPlatforms: hero.streamingPlatforms || [],
   socialLinks: hero.socialLinks || [],
+  latestAlbumName: hero.latestAlbumName || "VIBRANIUM",
+  latestAlbumLink: hero.latestAlbumLink || "/music",
   updatedAt: hero.updatedAt,
 });
 
@@ -156,7 +158,9 @@ const saveHeroImage = async (req, res, next) => {
       primaryCta, 
       secondaryCta, 
       streamingPlatforms, 
-      socialLinks 
+      socialLinks,
+      latestAlbumName,
+      latestAlbumLink
     } = req.body;
     const hero = await ensureHeroSetting();
     
@@ -183,6 +187,12 @@ const saveHeroImage = async (req, res, next) => {
     }
     if (socialLinks !== undefined) {
       hero.socialLinks = Array.isArray(socialLinks) ? socialLinks : [];
+    }
+    if (latestAlbumName !== undefined) {
+      hero.latestAlbumName = latestAlbumName || "VIBRANIUM";
+    }
+    if (latestAlbumLink !== undefined) {
+      hero.latestAlbumLink = latestAlbumLink || "/music";
     }
     
     await hero.save();
@@ -231,6 +241,36 @@ const updateAlbumHandler = async (req, res, next) => {
     // Validate ID format
     if (!id || id.trim() === "") {
       return res.status(400).json({ message: "Album ID is required" });
+    }
+    
+    // Validate coverUrl size if it's a data URL (base64 image)
+    if (coverUrl !== undefined) {
+      if (coverUrl && coverUrl.startsWith('data:image')) {
+        // Calculate approximate size (base64 is about 33% larger than binary)
+        const base64Size = coverUrl.length;
+        // Approximate binary size
+        const binarySize = Math.floor((base64Size * 3) / 4);
+        
+        // MongoDB document size limit is 16MB, but we should limit data URLs to a reasonable size
+        // Limit to 4MB binary (about 5.3MB base64) to leave room for other fields
+        const maxSizeBytes = 4 * 1024 * 1024; // 4MB
+        
+        if (binarySize > maxSizeBytes) {
+          return res.status(400).json({ 
+            message: "Image is too large",
+            error: `Image size (${(binarySize / 1024 / 1024).toFixed(2)}MB) exceeds the maximum allowed size of ${(maxSizeBytes / 1024 / 1024).toFixed(0)}MB. Please use a smaller image or upload to an image hosting service and use the URL instead.`
+          });
+        }
+        
+        // Also check if the entire request body is too large
+        const requestSize = JSON.stringify(req.body).length;
+        if (requestSize > 10 * 1024 * 1024) { // 10MB JSON limit
+          return res.status(400).json({ 
+            message: "Request payload too large",
+            error: `Request size exceeds the maximum allowed size. Please reduce the image size or use an image URL instead of uploading directly.`
+          });
+        }
+      }
     }
     
     // Try to find album by ID (MongoDB ObjectId or custom ID)
@@ -296,6 +336,18 @@ const updateAlbumHandler = async (req, res, next) => {
     }
     
     try {
+      // Check document size before saving (MongoDB limit is 16MB)
+      const docSize = JSON.stringify(album.toObject()).length;
+      const maxDocSize = 15 * 1024 * 1024; // 15MB to leave some margin
+      
+      if (docSize > maxDocSize) {
+        console.error(`Album document too large: ${(docSize / 1024 / 1024).toFixed(2)}MB`);
+        return res.status(400).json({ 
+          message: "Album data too large",
+          error: `The album data (${(docSize / 1024 / 1024).toFixed(2)}MB) exceeds the maximum allowed size. The image you uploaded is too large. Please use a smaller image (under 2MB) or upload to an image hosting service and use the URL instead.`
+        });
+      }
+      
       await album.save();
       console.log(`Album updated successfully: ${album.id || album._id?.toString() || 'unknown'}`);
       res.json(formatAlbum(album));
@@ -307,6 +359,14 @@ const updateAlbumHandler = async (req, res, next) => {
         errors: saveError.errors,
         stack: saveError.stack
       });
+      
+      // Check for MongoDB document size errors
+      if (saveError.message && saveError.message.includes('document is too large')) {
+        return res.status(400).json({ 
+          message: "Image too large for database",
+          error: "The image you uploaded is too large to store in the database. Please use a smaller image (under 2MB) or upload to an image hosting service (like Cloudinary, Imgur, or similar) and use the URL instead."
+        });
+      }
       
       if (saveError.name === "ValidationError") {
         const validationDetails = {};
