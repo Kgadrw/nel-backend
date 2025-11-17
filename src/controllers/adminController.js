@@ -2,6 +2,7 @@ const HeroSetting = require("../models/HeroSetting");
 const Album = require("../models/Album");
 const Video = require("../models/Video");
 const Tour = require("../models/Tour");
+const About = require("../models/About");
 const { getUploadSignature } = require("../services/cloudinary");
 
 const normalizeTracks = (tracks) => {
@@ -112,33 +113,34 @@ const saveHeroImage = async (req, res, next) => {
     const hero = await ensureHeroSetting();
     
     if (imageUrl !== undefined) {
-      hero.backgroundImage = imageUrl;
+      hero.backgroundImage = imageUrl || "/hero.jpeg";
     }
     if (videoUrl !== undefined) {
       hero.backgroundVideoUrl = videoUrl || "";
     }
     if (artistName !== undefined) {
-      hero.artistName = artistName;
+      hero.artistName = artistName || "NEL NGABO";
     }
     if (navLinks !== undefined) {
-      hero.navLinks = navLinks;
+      hero.navLinks = Array.isArray(navLinks) ? navLinks : [];
     }
     if (primaryCta !== undefined) {
-      hero.primaryCta = primaryCta;
+      hero.primaryCta = primaryCta || { label: "", targetType: "scroll", targetValue: "" };
     }
     if (secondaryCta !== undefined) {
-      hero.secondaryCta = secondaryCta;
+      hero.secondaryCta = secondaryCta || { label: "", url: "" };
     }
     if (streamingPlatforms !== undefined) {
-      hero.streamingPlatforms = streamingPlatforms;
+      hero.streamingPlatforms = Array.isArray(streamingPlatforms) ? streamingPlatforms : [];
     }
     if (socialLinks !== undefined) {
-      hero.socialLinks = socialLinks;
+      hero.socialLinks = Array.isArray(socialLinks) ? socialLinks : [];
     }
     
     await hero.save();
     res.json(formatHero(hero));
   } catch (error) {
+    console.error("Error saving hero:", error);
     next(error);
   }
 };
@@ -154,7 +156,7 @@ const listAlbums = async (_req, res, next) => {
 
 const createAlbum = async (req, res, next) => {
   try {
-    const { title, year, coverUrl, tracks, summary, links } = req.body;
+    const { title, year, coverUrl, tracks, summary, description, links } = req.body;
     if (!title || !coverUrl) {
       return res.status(400).json({ message: "title and coverUrl are required" });
     }
@@ -163,6 +165,7 @@ const createAlbum = async (req, res, next) => {
       year: year || "",
       coverUrl,
       summary: summary ?? "",
+      description: description ?? "",
       tracks: normalizeTracks(tracks),
       links: ensureLinks(Array.isArray(links) ? links : []),
     });
@@ -175,15 +178,27 @@ const createAlbum = async (req, res, next) => {
 const updateAlbumHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, year, coverUrl, tracks, summary, links } = req.body;
+    const { title, year, coverUrl, tracks, summary, description, links } = req.body;
     const album = await Album.findById(id);
     if (!album) {
       return res.status(404).json({ message: "Album not found" });
     }
-    album.title = title ?? album.title;
-    album.year = year ?? album.year;
-    album.coverUrl = coverUrl ?? album.coverUrl;
-    album.summary = summary ?? album.summary;
+    // Update fields only if they are provided in the request
+    if (title !== undefined) {
+      album.title = title || "Untitled";
+    }
+    if (year !== undefined) {
+      album.year = year || "";
+    }
+    if (coverUrl !== undefined) {
+      album.coverUrl = coverUrl || "/Album.jpeg";
+    }
+    if (summary !== undefined) {
+      album.summary = summary || "";
+    }
+    if (description !== undefined) {
+      album.description = description || "";
+    }
     if (tracks !== undefined) {
       album.tracks = normalizeTracks(tracks);
     }
@@ -193,6 +208,7 @@ const updateAlbumHandler = async (req, res, next) => {
     await album.save();
     res.json(formatAlbum(album));
   } catch (error) {
+    console.error("Error updating album:", error);
     next(error);
   }
 };
@@ -204,8 +220,9 @@ const deleteAlbumHandler = async (req, res, next) => {
     if (!album) {
       return res.status(404).json({ message: "Album not found" });
     }
-    res.json({ message: "Album deleted" });
+    res.json({ message: "Album deleted successfully" });
   } catch (error) {
+    console.error("Error deleting album:", error);
     next(error);
   }
 };
@@ -250,10 +267,17 @@ const updateVideoHandler = async (req, res, next) => {
     if (!video) {
       return res.status(404).json({ message: "Video not found" });
     }
-    if (title !== undefined) video.title = title;
-    if (views !== undefined) video.views = views;
-    if (description !== undefined) video.description = description;
-    if (youtubeUrl) {
+    // Update fields only if they are provided in the request
+    if (title !== undefined) {
+      video.title = title;
+    }
+    if (views !== undefined) {
+      video.views = views;
+    }
+    if (description !== undefined) {
+      video.description = description;
+    }
+    if (youtubeUrl !== undefined) {
       const videoId = extractVideoId(youtubeUrl);
       if (!videoId) {
         return res.status(400).json({ message: "Unable to extract video id from URL" });
@@ -264,6 +288,7 @@ const updateVideoHandler = async (req, res, next) => {
     await video.save();
     res.json(formatVideo(video));
   } catch (error) {
+    console.error("Error updating video:", error);
     next(error);
   }
 };
@@ -275,8 +300,9 @@ const deleteVideoHandler = async (req, res, next) => {
     if (!video) {
       return res.status(404).json({ message: "Video not found" });
     }
-    res.json({ message: "Video deleted" });
+    res.json({ message: "Video deleted successfully" });
   } catch (error) {
+    console.error("Error deleting video:", error);
     next(error);
   }
 };
@@ -311,13 +337,23 @@ const updateTourHandler = async (req, res, next) => {
     if (!tour) {
       return res.status(404).json({ message: "Tour not found" });
     }
-    if (date !== undefined) tour.date = date;
-    if (city !== undefined) tour.city = city;
-    if (venue !== undefined) tour.venue = venue;
-    if (ticketUrl !== undefined) tour.ticketUrl = ticketUrl;
+    // Update fields only if they are provided in the request
+    if (date !== undefined) {
+      tour.date = date;
+    }
+    if (city !== undefined) {
+      tour.city = city;
+    }
+    if (venue !== undefined) {
+      tour.venue = venue;
+    }
+    if (ticketUrl !== undefined) {
+      tour.ticketUrl = ticketUrl;
+    }
     await tour.save();
     res.json(formatTour(tour));
   } catch (error) {
+    console.error("Error updating tour:", error);
     next(error);
   }
 };
@@ -329,8 +365,9 @@ const deleteTourHandler = async (req, res, next) => {
     if (!tour) {
       return res.status(404).json({ message: "Tour not found" });
     }
-    res.json({ message: "Tour deleted" });
+    res.json({ message: "Tour deleted successfully" });
   } catch (error) {
+    console.error("Error deleting tour:", error);
     next(error);
   }
 };
@@ -340,6 +377,81 @@ const getCloudinarySignature = (_req, res, next) => {
     const payload = getUploadSignature();
     res.json(payload);
   } catch (error) {
+    next(error);
+  }
+};
+
+const ensureAbout = async () => {
+  let about = await About.findOne();
+  if (!about) {
+    about = await About.create({
+      biography: "",
+      careerHighlights: [],
+      achievements: [],
+      awards: [],
+      musicLabel: "",
+      location: "",
+      email: "",
+      phone: "",
+      artistImage: "",
+    });
+  }
+  return about;
+};
+
+const formatAbout = (about) => ({
+  id: about.id ?? about._id,
+  biography: about.biography,
+  careerHighlights: about.careerHighlights,
+  achievements: about.achievements,
+  awards: about.awards,
+  musicLabel: about.musicLabel,
+  location: about.location,
+  email: about.email,
+  phone: about.phone,
+  artistImage: about.artistImage,
+  createdAt: about.createdAt,
+  updatedAt: about.updatedAt,
+});
+
+const getAbout = async (_req, res, next) => {
+  try {
+    const about = await ensureAbout();
+    res.json({ about: formatAbout(about) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateAbout = async (req, res, next) => {
+  try {
+    const {
+      biography,
+      careerHighlights,
+      achievements,
+      awards,
+      musicLabel,
+      location,
+      email,
+      phone,
+      artistImage,
+    } = req.body;
+    const about = await ensureAbout();
+    
+    if (biography !== undefined) about.biography = biography;
+    if (careerHighlights !== undefined) about.careerHighlights = careerHighlights;
+    if (achievements !== undefined) about.achievements = achievements;
+    if (awards !== undefined) about.awards = awards;
+    if (musicLabel !== undefined) about.musicLabel = musicLabel;
+    if (location !== undefined) about.location = location;
+    if (email !== undefined) about.email = email;
+    if (phone !== undefined) about.phone = phone;
+    if (artistImage !== undefined) about.artistImage = artistImage;
+    
+    await about.save();
+    res.json(formatAbout(about));
+  } catch (error) {
+    console.error("Error updating about:", error);
     next(error);
   }
 };
@@ -359,6 +471,8 @@ module.exports = {
   createTourHandler,
   updateTourHandler,
   deleteTourHandler,
+  getAbout,
+  updateAbout,
   getCloudinarySignature,
 };
 
