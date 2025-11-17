@@ -35,18 +35,60 @@ const ensureHeroSetting = async () => {
 
 const createId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 
-const formatAlbum = (album) => ({
-  id: album.id ?? (album._id ? album._id.toString() : null),
-  title: album.title || "",
-  year: album.year || "",
-  coverUrl: album.coverUrl || "/Album.jpeg",
-  summary: album.summary || "",
-  description: album.description || "",
-  tracks: Array.isArray(album.tracks) ? album.tracks : [],
-  links: Array.isArray(album.links) ? album.links : [],
-  createdAt: album.createdAt ? album.createdAt.toISOString() : new Date().toISOString(),
-  updatedAt: album.updatedAt ? album.updatedAt.toISOString() : new Date().toISOString(),
-});
+const formatAlbum = (album) => {
+  try {
+    let createdAt = new Date().toISOString();
+    let updatedAt = new Date().toISOString();
+    
+    if (album.createdAt) {
+      if (album.createdAt instanceof Date) {
+        createdAt = album.createdAt.toISOString();
+      } else if (typeof album.createdAt === 'string') {
+        createdAt = album.createdAt;
+      } else if (album.createdAt.toISOString) {
+        createdAt = album.createdAt.toISOString();
+      }
+    }
+    
+    if (album.updatedAt) {
+      if (album.updatedAt instanceof Date) {
+        updatedAt = album.updatedAt.toISOString();
+      } else if (typeof album.updatedAt === 'string') {
+        updatedAt = album.updatedAt;
+      } else if (album.updatedAt.toISOString) {
+        updatedAt = album.updatedAt.toISOString();
+      }
+    }
+    
+    return {
+      id: album.id ?? (album._id ? album._id.toString() : null),
+      title: album.title || "",
+      year: album.year || "",
+      coverUrl: album.coverUrl || "/Album.jpeg",
+      summary: album.summary || "",
+      description: album.description || "",
+      tracks: Array.isArray(album.tracks) ? album.tracks : [],
+      links: Array.isArray(album.links) ? album.links : [],
+      createdAt,
+      updatedAt,
+    };
+  } catch (error) {
+    console.error("Error formatting album:", error);
+    // Return a safe fallback if formatting fails
+    return {
+      id: album.id ?? (album._id ? album._id.toString() : null),
+      title: album.title || "",
+      year: album.year || "",
+      coverUrl: album.coverUrl || "/Album.jpeg",
+      summary: album.summary || "",
+      description: album.description || "",
+      tracks: Array.isArray(album.tracks) ? album.tracks : [],
+      links: Array.isArray(album.links) ? album.links : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+};
 
 const formatVideo = (video) => ({
   id: video.id ?? video._id,
@@ -239,10 +281,18 @@ const updateAlbumHandler = async (req, res, next) => {
     
     // Validate required fields before saving
     if (!album.title || !album.coverUrl) {
-      return res.status(400).json({ 
-        message: "Title and coverUrl are required fields",
-        album: formatAlbum(album)
-      });
+      try {
+        return res.status(400).json({ 
+          message: "Title and coverUrl are required fields",
+          album: formatAlbum(album)
+        });
+      } catch (formatError) {
+        console.error("Error formatting album in validation:", formatError);
+        return res.status(400).json({ 
+          message: "Title and coverUrl are required fields",
+          albumId: album._id?.toString() || album.id
+        });
+      }
     }
     
     try {
@@ -254,17 +304,20 @@ const updateAlbumHandler = async (req, res, next) => {
       console.error("Save error details:", {
         name: saveError.name,
         message: saveError.message,
-        errors: saveError.errors
+        errors: saveError.errors,
+        stack: saveError.stack
       });
       
       if (saveError.name === "ValidationError") {
+        const validationDetails = {};
+        if (saveError.errors) {
+          Object.keys(saveError.errors).forEach(key => {
+            validationDetails[key] = saveError.errors[key].message;
+          });
+        }
         return res.status(400).json({ 
           message: "Validation error",
-          errors: saveError.errors,
-          details: Object.keys(saveError.errors || {}).map(key => ({
-            field: key,
-            message: saveError.errors[key].message
-          }))
+          errors: validationDetails
         });
       }
       
